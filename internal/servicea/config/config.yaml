@@ -1,0 +1,7 @@
+http:
+  port: 7475
+queue:
+  type: kafka
+  kafka:
+    endpoint: localhost:9092
+    topic: mypaypal

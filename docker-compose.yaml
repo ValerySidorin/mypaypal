@@ -1,0 +1,84 @@
+version: '3.9'
+
+services:
+  servicea:
+    image: servicea:${BUILD_TAG}
+    build:
+      context: .
+      dockerfile: ./cmd/servicea/Dockerfile
+    ports:
+      - "${HTTP_PORT}:${HTTP_PORT}"
+    environment:
+      SERVICEA_QUEUE_TYPE: ${QUEUE_TYPE}
+      SERVICEA_QUEUE_KAFKA_ENDPOINT: kafka1:19091
+      SERVICEA_QUEUE_KAFKA_TOPIC: ${KAFKA_TOPIC}
+      SERVICEA_HTTP_PORT: ${HTTP_PORT}
+    depends_on:
+      - kafka1
+
+  serviceb:
+    image: serviceb:${BUILD_TAG}
+    build:
+      context: .
+      dockerfile: ./cmd/serviceb/Dockerfile
+    environment:
+      SERVICEB_QUEUE_TYPE: ${QUEUE_TYPE}
+      SERVICEB_QUEUE_KAFKA_ENDPOINT: kafka1:19091
+      SERVICEB_QUEUE_KAFKA_TOPIC: ${KAFKA_TOPIC}
+      SERVICEB_STORAGE_TYPE: ${STORAGE_TYPE}
+      SERVICEB_STORAGE_PG_CONN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      - kafka1
+      - postgres
+
+  zoo:
+    image: zookeeper:3.4.9
+    hostname: zoo
+    ports:
+      - "2181:2181"
+    environment:
+        ZOO_MY_ID: 1
+        ZOO_PORT: 2181
+        ZOO_SERVERS: server.1=zoo:2888:3888
+    volumes:
+      - zoo_data:/data
+      - zoo_datalog:/datalog
+    restart: unless-stopped
+  kafka1:
+    image: confluentinc/cp-kafka:5.3.0
+    ports:
+      - "9091:9091"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_INTERNAL://kafka1:19091,LISTENER_EXTERNAL://localhost:9091
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_INTERNAL:PLAINTEXT,LISTENER_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_INTERNAL
+      KAFKA_ZOOKEEPER_CONNECT: "zoo:2181"
+      KAFKA_BROKER_ID: 1
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=INFO,kafka.producer.async.DefaultEventHandler=INFO,state.change.logger=INFO"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    depends_on:
+      - zoo
+    restart: unless-stopped
+  postgres:
+    image: postgres
+    ports: 
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgres/data
+    restart: unless-stopped
+
+volumes:
+  zoo_data:
+  zoo_datalog:
+  kafka_data:
+  postgres_data:
